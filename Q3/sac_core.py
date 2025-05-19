@@ -397,7 +397,13 @@ class SAC_agent:
             env_name (str): Environment name
             timestep (str): Current timestep
         """
-        model_dir = config.MODEL_SAVE_DIR
+        # If saving final model, save to Q3 directory
+        if timestep == "final":
+            model_dir = "./Q3"
+            print(f"Saving final model to {model_dir} directory")
+        else:
+            model_dir = config.MODEL_SAVE_DIR
+
         if not os.path.exists(model_dir):
             os.makedirs(model_dir, exist_ok=True)
 

@@ -42,6 +42,19 @@ def find_latest_checkpoint(model_dir, env_name, model_type="actor"):
     # Return the highest timestep as a string
     return str(max(timesteps))
 
+# Helper function to check if a model file exists
+def check_model_exists(file_path):
+    """
+    Check if a model file exists.
+
+    Args:
+        file_path (str): Path to the model file
+
+    Returns:
+        bool: True if the file exists, False otherwise
+    """
+    return os.path.isfile(file_path)
+
 # Do not modify the input of the 'act' function and the '__init__' function.
 class Agent(object):
     def __init__(self):
@@ -92,48 +105,135 @@ class Agent(object):
             load_env_name = config.LOAD_ENV_NAME
             load_timestep = config.LOAD_MODEL_TIMESTEP
 
-            try:
-                # First try to load the model with the specified timestep
-                self.sac_agent.load(load_env_name, load_timestep)
-                print(f"Successfully loaded model from: {config.MODEL_SAVE_DIR}/{load_env_name}_sac_*_{load_timestep}.pth")
-                self.model_loaded = True
+            # Define paths for model files
+            q3_actor_path = f"./Q3/{load_env_name}_sac_actor_{load_timestep}.pth"
+            q3_critic_path = f"./Q3/{load_env_name}_sac_critic_{load_timestep}.pth"
+            q3_log_alpha_path = f"./Q3/{load_env_name}_sac_log_alpha_{load_timestep}.pth"
+            q3_norm_path = f"./Q3/{load_env_name}_obs_norm_{load_timestep}.npz"
 
-                # Also try to load the matching normalizer if it exists
-                if self.obs_normalizer is not None:
-                    try:
-                        norm_path = f"{config.MODEL_SAVE_DIR}/{load_env_name}_obs_norm_{load_timestep}.npz"
-                        self.obs_normalizer.load(norm_path)
-                        print(f"Loaded matching observation normalizer from {norm_path}")
-                    except:
-                        print(f"Note: Could not find matching normalizer for timestep {load_timestep}")
+            model_dir_actor_path = f"{config.MODEL_SAVE_DIR}/{load_env_name}_sac_actor_{load_timestep}.pth"
+            model_dir_critic_path = f"{config.MODEL_SAVE_DIR}/{load_env_name}_sac_critic_{load_timestep}.pth"
+            # We'll define the normalizer path for later use
+            model_dir_norm_path = f"{config.MODEL_SAVE_DIR}/{load_env_name}_obs_norm_{load_timestep}.npz"
 
-            except Exception as e:
-                print(f"Could not load model with timestep {load_timestep}: {e}")
+            # Check if model files exist in Q3 directory
+            q3_actor_exists = check_model_exists(q3_actor_path)
+            q3_critic_exists = check_model_exists(q3_critic_path)
+            q3_log_alpha_exists = check_model_exists(q3_log_alpha_path)
+            q3_norm_exists = check_model_exists(q3_norm_path)
+
+            # Check if model files exist in model_dir
+            model_dir_actor_exists = check_model_exists(model_dir_actor_path)
+            model_dir_critic_exists = check_model_exists(model_dir_critic_path)
+            # We don't need to check log_alpha for loading, but we'll check for normalizer
+            model_dir_norm_exists = check_model_exists(model_dir_norm_path)
+
+            # Try to load model from Q3 directory first
+            if q3_actor_exists and q3_critic_exists and q3_log_alpha_exists:
+                try:
+                    # Temporarily modify the model_dir in the agent to load from Q3 directory
+                    original_model_dir = config.MODEL_SAVE_DIR
+                    config.MODEL_SAVE_DIR = "./Q3"
+
+                    # Load the model
+                    self.sac_agent.load(load_env_name, load_timestep)
+                    print(f"Successfully loaded model from: ./Q3/{load_env_name}_sac_*_{load_timestep}.pth")
+                    self.model_loaded = True
+
+                    # Restore the original model_dir
+                    config.MODEL_SAVE_DIR = original_model_dir
+
+                    # Also try to load the matching normalizer if it exists
+                    if self.obs_normalizer is not None and q3_norm_exists:
+                        try:
+                            self.obs_normalizer.load(q3_norm_path)
+                            print(f"Loaded matching observation normalizer from {q3_norm_path}")
+                        except Exception as norm_e:
+                            print(f"Note: Could not load normalizer from Q3 directory: {norm_e}")
+                except Exception as e:
+                    print(f"Could not load model from Q3 directory: {e}")
+                    # Restore the original model_dir if there was an error
+                    if 'original_model_dir' in locals():
+                        config.MODEL_SAVE_DIR = original_model_dir
+
+            # If model wasn't loaded from Q3 directory, try to load from model_dir
+            if not self.model_loaded and model_dir_actor_exists and model_dir_critic_exists:
+                try:
+                    # Load the model from model_dir
+                    self.sac_agent.load(load_env_name, load_timestep)
+                    print(f"Successfully loaded model from: {config.MODEL_SAVE_DIR}/{load_env_name}_sac_*_{load_timestep}.pth")
+                    self.model_loaded = True
+
+                    # Also try to load the matching normalizer if it exists
+                    if self.obs_normalizer is not None and model_dir_norm_exists:
+                        try:
+                            self.obs_normalizer.load(model_dir_norm_path)
+                            print(f"Loaded matching observation normalizer from {model_dir_norm_path}")
+                        except Exception as norm_e:
+                            print(f"Note: Could not load normalizer from model_dir: {norm_e}")
+                except Exception as e:
+                    print(f"Could not load model from model_dir: {e}")
+
+            # If model still wasn't loaded, try to find the latest checkpoint
+            if not self.model_loaded:
                 print("Attempting to find the most recent checkpoint...")
 
-                # Find the latest checkpoint
-                latest_timestep = find_latest_checkpoint(config.MODEL_SAVE_DIR, load_env_name)
+                # First check Q3 directory for any checkpoints
+                if os.path.exists("./Q3"):
+                    latest_timestep = find_latest_checkpoint("./Q3", load_env_name)
+                    if latest_timestep != "final":
+                        try:
+                            # Temporarily modify the model_dir in the agent to load from Q3 directory
+                            original_model_dir = config.MODEL_SAVE_DIR
+                            config.MODEL_SAVE_DIR = "./Q3"
 
-                if latest_timestep != "final" and latest_timestep != load_timestep:
-                    try:
-                        # Try to load the latest checkpoint
-                        self.sac_agent.load(load_env_name, latest_timestep)
-                        print(f"Successfully loaded model from: {config.MODEL_SAVE_DIR}/{load_env_name}_sac_*_{latest_timestep}.pth")
-                        self.model_loaded = True
+                            # Load the model
+                            self.sac_agent.load(load_env_name, latest_timestep)
+                            print(f"Successfully loaded model from: ./Q3/{load_env_name}_sac_*_{latest_timestep}.pth")
+                            self.model_loaded = True
 
-                        # Also try to load the matching normalizer
-                        if self.obs_normalizer is not None:
-                            try:
-                                norm_path = f"{config.MODEL_SAVE_DIR}/{load_env_name}_obs_norm_{latest_timestep}.npz"
-                                self.obs_normalizer.load(norm_path)
-                                print(f"Loaded matching observation normalizer from {norm_path}")
-                            except:
-                                print(f"Note: Could not find matching normalizer for timestep {latest_timestep}")
-                    except Exception as inner_e:
-                        print(f"Could not load latest checkpoint (timestep {latest_timestep}): {inner_e}")
-                        print("No valid model checkpoint found.")
-                else:
-                    print(f"No alternative checkpoints found for {load_env_name}.")
+                            # Restore the original model_dir
+                            config.MODEL_SAVE_DIR = original_model_dir
+
+                            # Also try to load the matching normalizer
+                            if self.obs_normalizer is not None:
+                                try:
+                                    norm_path = f"./Q3/{load_env_name}_obs_norm_{latest_timestep}.npz"
+                                    if os.path.exists(norm_path):
+                                        self.obs_normalizer.load(norm_path)
+                                        print(f"Loaded matching observation normalizer from {norm_path}")
+                                except Exception as norm_e:
+                                    print(f"Note: Could not load normalizer: {norm_e}")
+                        except Exception as e:
+                            print(f"Could not load latest checkpoint from Q3 directory: {e}")
+                            # Restore the original model_dir if there was an error
+                            if 'original_model_dir' in locals():
+                                config.MODEL_SAVE_DIR = original_model_dir
+
+                # If still not loaded, check model_dir
+                if not self.model_loaded:
+                    latest_timestep = find_latest_checkpoint(config.MODEL_SAVE_DIR, load_env_name)
+                    if latest_timestep != "final" and latest_timestep != load_timestep:
+                        try:
+                            # Try to load the latest checkpoint
+                            self.sac_agent.load(load_env_name, latest_timestep)
+                            print(f"Successfully loaded model from: {config.MODEL_SAVE_DIR}/{load_env_name}_sac_*_{latest_timestep}.pth")
+                            self.model_loaded = True
+
+                            # Also try to load the matching normalizer
+                            if self.obs_normalizer is not None:
+                                try:
+                                    norm_path = f"{config.MODEL_SAVE_DIR}/{load_env_name}_obs_norm_{latest_timestep}.npz"
+                                    if os.path.exists(norm_path):
+                                        self.obs_normalizer.load(norm_path)
+                                        print(f"Loaded matching observation normalizer from {norm_path}")
+                                except Exception as norm_e:
+                                    print(f"Note: Could not load normalizer: {norm_e}")
+                        except Exception as inner_e:
+                            print(f"Could not load latest checkpoint from model_dir: {inner_e}")
+                            print("No valid model checkpoint found.")
+                    else:
+                        print(f"No alternative checkpoints found for {load_env_name}.")
 
             # If we've loaded a model successfully, update the config to reflect the actual timestep used
             if self.model_loaded:

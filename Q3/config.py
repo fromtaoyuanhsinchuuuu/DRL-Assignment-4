@@ -38,7 +38,7 @@ ACTOR_HIDDEN_LAYERS = 3  # Number of hidden layers in actor network
 CRITIC_HIDDEN_LAYERS = 3  # Number of hidden layers in critic network
 
 # --- Training process parameters ---
-MAX_TRAIN_TIMESTEPS = int(3e6)  # Total training steps
+MAX_TRAIN_TIMESTEPS = int(1e5)  # Total training steps
 EVAL_FREQ = int(1e4)           # Evaluate model every N steps
 SAVE_FREQ = int(5e4)           # Save model every N steps
 MODEL_SAVE_DIR = "./model/q3_sac"     # Model save path for Q3 SAC

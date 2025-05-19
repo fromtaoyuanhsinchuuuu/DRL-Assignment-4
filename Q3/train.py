@@ -57,7 +57,7 @@ def evaluate_agent(env_name, agent, obs_normalizer=None, n_episodes=10, seed=Non
     # Set normalizer to evaluation mode if provided
     if obs_normalizer is not None:
         obs_normalizer.set_training_mode(False)
-        
+
     for ep in range(n_episodes):
         # Create a new environment for each evaluation episode
         eval_env = make_dmc_env(env_name=env_name, seed=seed+ep if seed is not None else None,
@@ -105,17 +105,17 @@ def evaluate_agent(env_name, agent, obs_normalizer=None, n_episodes=10, seed=Non
 
     mean_reward = np.mean(total_rewards)
     std_reward = np.std(total_rewards)
-    
+
     # Restore normalizer to training mode
     if obs_normalizer is not None:
         obs_normalizer.set_training_mode(True)
-        
+
     return mean_reward, std_reward
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train SAC agent on humanoid-walk environment')
     parser.add_argument('--resume', action='store_true', help='Resume training from checkpoint')
-    parser.add_argument('--checkpoint', type=str, default='final', 
+    parser.add_argument('--checkpoint', type=str, default='final',
                       help='Checkpoint to load (e.g. "100000" or "final")')
     parser.add_argument('--env_name', type=str, default=config.ENV_NAME,
                       help='Environment name for loading checkpoint')
@@ -124,7 +124,7 @@ def parse_args():
 def main():
     # Parse command line arguments
     args = parse_args()
-    
+
     # --- Initialization ---
     # Create model save directory (and parent directories if needed)
     if not os.path.exists(config.MODEL_SAVE_DIR):
@@ -218,7 +218,7 @@ def main():
         actor_hidden_layers=config.ACTOR_HIDDEN_LAYERS,
         critic_hidden_layers=config.CRITIC_HIDDEN_LAYERS
     )
-    
+
     # If resuming from checkpoint, load the agent's state
     start_timestep = 0
     if args.resume:
@@ -227,7 +227,7 @@ def main():
         try:
             agent.load(checkpoint_env_name, checkpoint_timestep)
             print(f"Successfully loaded model from: {config.MODEL_SAVE_DIR}/{checkpoint_env_name}_sac_*_{checkpoint_timestep}.pth")
-            
+
             # Try to load observation normalizer statistics if enabled
             if obs_normalizer is not None:
                 try:
@@ -236,7 +236,7 @@ def main():
                     print(f"Loaded observation normalizer from {norm_path}")
                 except Exception as e:
                     print(f"Warning: Could not load observation normalizer: {e}")
-            
+
             # If checkpoint is a number, use it as starting timestep
             if checkpoint_timestep.isdigit():
                 start_timestep = int(checkpoint_timestep)
@@ -292,7 +292,7 @@ def main():
         'target_entropy': agent.target_entropy,
         # Add mu and log_std statistics
         'mu_mean': 0.0,
-        'mu_min': 0.0, 
+        'mu_min': 0.0,
         'mu_max': 0.0,
         'log_std_mean': 0.0,
         'log_std_min': 0.0,
@@ -490,7 +490,12 @@ def main():
     # Save final model
     agent.save(config.ENV_NAME, "final")
     if obs_normalizer is not None:
-        obs_normalizer.save(f"{config.MODEL_SAVE_DIR}/{config.ENV_NAME}_obs_norm_final.npz")
+        # Save final normalizer to Q3 directory
+        final_norm_dir = "./Q3"
+        if not os.path.exists(final_norm_dir):
+            os.makedirs(final_norm_dir, exist_ok=True)
+        obs_normalizer.save(f"{final_norm_dir}/{config.ENV_NAME}_obs_norm_final.npz")
+        print(f"Saved final observation normalizer to {final_norm_dir} directory")
 
     print("Training finished. Saved final model.")
     pbar.close()  # Close the progress bar
