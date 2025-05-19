@@ -13,6 +13,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="DRL HW4 Q3 - Humanoid Walk")
     parser.add_argument("--episodes", default=100, type=int, help="Number of episodes to evaluate")
     parser.add_argument("--record_demo", action="store_true", help="Record a demonstration")
+    # Add token parameter for grading system
+    parser.add_argument("--token", type=str, help="Evaluation token (used by grading system)")
     return parser.parse_args()
 
 def load_agent(agent_path):
